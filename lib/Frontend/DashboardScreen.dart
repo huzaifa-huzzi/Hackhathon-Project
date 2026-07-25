@@ -382,16 +382,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _buildElaLegend(),
 
             const SizedBox(height: 16),
-            _sectionHeader('OCR & Layout Extraction'),
-            const SizedBox(height: 8),
-
-            _buildDataRow('Gateway UI Match', _hasAnalyzed ? 'JazzCash Mobile' : '--', false),
-            _buildDataRow('Transaction ID', _hasAnalyzed ? '0198237419' : '--', _isFake),
-            _buildDataRow('Parsed Amount', _hasAnalyzed ? 'Rs. 25,000' : '--', false),
-            _buildDataRow('Checksum Logic', _hasAnalyzed ? (_isFake ? 'FAILED (Mismatch)' : 'PASSED') : '--', _isFake),
-            _buildDataRow('Localized Edit', _hasAnalyzed ? (_isFake ? 'Detected (Amount)' : 'Clean Matrix') : '--', _isFake),
-
-            const SizedBox(height: 16),
             _sectionHeader('Metadata Inspection'),
             const SizedBox(height: 8),
             _buildDataRow('Software Tag', _hasAnalyzed ? (_isFake ? 'PicsArt / Photoshop' : 'Android System UI') : '--', _isFake),
