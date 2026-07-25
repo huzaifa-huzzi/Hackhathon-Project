@@ -1,19 +1,37 @@
+"""
+lib/backend/main.py
+===================
+SikkaCheck — FastAPI entrypoint
+
+Receives image uploads from Flutter (multipart/form-data), runs the
+full async forensic pipeline, and returns a structured PipelineResponse.
+"""
+
+import json
 import os
-import jwt
-import random
-from typing import List, Optional
-from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File
+import tempfile
+from typing import Optional
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    from .orchestrator import run_pipeline_async
+    from .models import PipelineResponse
+except ImportError:
+    from orchestrator import run_pipeline_async  # type: ignore[no-redef]
+    from models import PipelineResponse  # type: ignore[no-redef]
 
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "your-fallback-secret-if-any")
+# ---------------------------------------------------------------------------
+# App setup
+# ---------------------------------------------------------------------------
 
-app = FastAPI(title="SikkaCheck Forensic Backend")
+app = FastAPI(
+    title="SikkaCheck Forensic API",
+    description="Multi-layer async image forensic & forgery detection service",
+    version="1.0.0",
+)
 
-# CORS Setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,116 +40,102 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------------------------------------------------------------------------
+# Allowed image MIME types
+# ---------------------------------------------------------------------------
 
-# Authentication Middleware
-def get_current_user(authorization: str = Header(...)):
-    """Decodes and validates the Supabase JWT sent from Flutter."""
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid token format")
+ALLOWED_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/tiff",
+    "image/bmp",
+    "image/heic",
+    "image/heif",
+}
 
-    token = authorization.split(" ")[1]
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
 
-    try:
-        payload = jwt.decode(
-            token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated"
+
+@app.get("/health", tags=["Health"])
+async def health_check() -> dict:
+    """Lightweight liveness probe."""
+    return {"status": "ok"}
+
+
+@app.post(
+    "/api/v1/analyze",
+    response_model=PipelineResponse,
+    tags=["Forensics"],
+    summary="Analyze an uploaded image for signs of forgery or AI generation",
+)
+async def analyze_image(
+    file: UploadFile = File(..., description="JPEG, PNG, or other image file"),
+    ocr_data: Optional[str] = Form(
+        None,
+        description=(
+            "Optional JSON-encoded OCR bounding boxes from the Flutter client. "
+            'Each element: {"text": str, "bbox": [x, y, w, h], "confidence": float}'
+        ),
+    ),
+) -> PipelineResponse:
+    """
+    Run the full SikkaCheck forensic pipeline on the uploaded image.
+
+    - Layer 1: Metadata & EXIF inspection  
+    - Layer 2: Pixel & signal forensics (ELA, FFT, noise grid)  
+    - Layer 3: Structural & geometric analysis  
+
+    All layers run concurrently. Returns a unified `PipelineResponse`.
+    """
+    # ── 1. Validate content type ───────────────────────────────────────────
+    content_type = (file.content_type or "").lower().split(";")[0].strip()
+    if content_type not in ALLOWED_CONTENT_TYPES and not content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Unsupported file type: '{content_type}'. "
+                "Please upload a JPEG, PNG, or other image file."
+            ),
         )
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
+    # ── 2. Parse optional OCR data ─────────────────────────────────────────
+    parsed_ocr = None
+    if ocr_data:
+        try:
+            parsed_ocr = json.loads(ocr_data)
+            if not isinstance(parsed_ocr, list):
+                parsed_ocr = None
+        except (json.JSONDecodeError, ValueError):
+            parsed_ocr = None  # silently ignore malformed OCR payload
 
-# Request/Response Schemas
-class ForensicAnalysisResponse(BaseModel):
-    file_name: str
-    is_suspicious: bool
-    confidence_score: float
-    gateway_detected: str
-    transaction_id: Optional[str]
-    amount_detected: Optional[str]
-    checksum_passed: bool
-    software_tag: str
-    message: str
+    # ── 3. Write upload to a secure temp file, run pipeline, clean up ──────
+    temp_path: Optional[str] = None
+    try:
+        suffix = os.path.splitext(file.filename or "upload")[1] or ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            temp_path = tmp.name
 
+        result: PipelineResponse = await run_pipeline_async(
+            temp_path, ocr_data=parsed_ocr
+        )
+        return result
 
-# ------------------- ENDPOINTS -------------------
-
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "service": "SikkaCheck Forensics Engine"}
-
-
-@app.post("/api/analyze", response_model=ForensicAnalysisResponse)
-async def analyze_screenshot(
-    file: UploadFile = File(...),
-    user: dict = Depends(get_current_user)
-):
-    """
-    Accepts screenshot file, runs forensic check logic,
-    and returns ELA/OCR analysis report.
-    """
-    # File validation
-    allowed_extensions = ["png", "jpg", "jpeg",]
-    file_ext = file.filename.split(".")[-1].lower()
-
-    if file_ext not in allowed_extensions:
-        raise HTTPException(status_code=400, detail="Unsupported file format. Upload PNG or JPG.")
-
-    # Read image bytes
-    contents = await file.read()
-    if len(contents) == 0:
-        raise HTTPException(status_code=400, detail="Empty file uploaded.")
-
-    # --- Simulated Forensic Analysis Engine ---
-    is_fake = "fake" in file.filename.lower() or (len(contents) % 2 == 0)
-
-    return ForensicAnalysisResponse(
-        file_name=file.filename,
-        is_suspicious=is_fake,
-        confidence_score=94.5 if is_fake else 99.1,
-        gateway_detected="JazzCash Mobile" if random.choice([True, False]) else "EasyPaisa",
-        transaction_id="0198237419" if is_fake else "9841204912",
-        amount_detected="Rs. 25,000",
-        checksum_passed=not is_fake,
-        software_tag="PicsArt / Editor" if is_fake else "Android System UI",
-        message="Pixel tampering & ELA density anomaly detected!" if is_fake else "Image integrity verified. Clean metadata."
-    )
-
-
-@app.get("/api/reports")
-def get_user_reports(user: dict = Depends(get_current_user)):
-    """Fetch history of scans done by the logged-in user."""
-    user_id = user.get("sub")
-
-    return {
-        "user_id": user_id,
-        "total_scans": 3,
-        "reports": [
-            {
-                "id": "rep_101",
-                "file_name": "receipt_jan_1.jpg",
-                "status": "AUTHENTIC",
-                "timestamp": "2026-03-28T10:15:00Z"
+    except HTTPException:
+        raise  # re-raise validation errors as-is
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "message": "Forensic pipeline execution failed.",
+                "error": str(exc),
             },
-            {
-                "id": "rep_102",
-                "file_name": "payment_edited.png",
-                "status": "SUSPICIOUS",
-                "timestamp": "2026-03-29T14:22:00Z"
-            }
-        ]
-    }
-
-
-@app.get("/api/stats")
-def get_dashboard_stats(user: dict = Depends(get_current_user)):
-    """Dashboard analytics overview for Flutter UI."""
-    return {
-        "total_analyzed": 142,
-        "fraud_detected": 18,
-        "clean_verified": 124,
-        "accuracy_rate": "98.4%"
-    }
-
-
+        ) from exc
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)

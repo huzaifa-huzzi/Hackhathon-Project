@@ -1,0 +1,101 @@
+### Task Objective
+Refactor `main.py` completely to replace all existing trash/placeholder endpoints with a production-grade, asynchronous image forensic API using FastAPI. The backend must receive JPEG/JPG (or PNG) image uploads from a Flutter mobile/web app via `multipart/form-data`, pass the uploaded file to `lib/backend/orchestrator.py`, and return the unified forensic JSON response.
+
+---
+
+### Key Requirements & Execution Plan
+
+#### 1. Clean Up `main.py`
+- Remove all obsolete, hardcoded, or trash endpoints in `main.py`.
+- Configure CORS middleware using `fastapi.middleware.cors.CORSMiddleware` with `allow_origins=["*"]`, `allow_credentials=True`, `allow_methods=["*"]`, and `allow_headers=["*"]` to ensure seamless requests from the Flutter client.
+
+#### 2. Implement `/api/v1/analyze` Endpoint
+Create a primary analysis endpoint:
+- **Route:** `POST /api/v1/analyze`
+- **Payload:** `file: UploadFile = File(...)` via `multipart/form-data`.
+- **Optional Form Parameters:** `ocr_data: Optional[str] = Form(None)` (accepts an optional JSON-encoded string representing OCR bounding boxes if provided by Flutter, default to `None`).
+
+#### 3. Upload File Handling & Lifecycle
+Inside the `/api/v1/analyze` handler:
+1. Validate that the uploaded file content-type is an image (`image/jpeg`, `image/jpg`, `image/png`, etc.). Return HTTP 400 if invalid.
+2. Generate a secure, unique temporary file on disk using `tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")` to store the incoming bytes.
+3. Asynchronously read the uploaded bytes (`await file.read()`) and write them to the temporary file path.
+4. Call `await run_pipeline_async(temp_file_path, parsed_ocr_data)` imported from `lib.backend.orchestrator`.
+5. Wrap the call in a `try...finally` block to ensure `os.unlink(temp_file_path)` is ALWAYS executed after synthesis to prevent temp file leakages on the disk.
+
+#### 4. Response & Error Handling
+- Return the full Pydantic model (`PipelineResponse`) directly from FastAPI so it serializes into structured JSON matching Flutter's expectations.
+- Include a lightweight health check endpoint `GET /health` returning `{"status": "ok"}`.
+- If an unhandled exception occurs during analysis, catch it and return an HTTP 500 JSON response with `{"detail": "Internal Forensic Engine Error", "error": str(exc)}`.
+
+---
+
+### Example Reference Implementation Structure for `main.py`:
+
+```python
+import os
+import json
+import tempfile
+from typing import Optional
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+
+from lib.backend.orchestrator import run_pipeline_async
+from lib.backend.models import PipelineResponse
+
+app = FastAPI(
+    title="SikkaCheck Forensic API",
+    description="Multi-layer async image forensic & forgery detection service",
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+@app.post("/api/v1/analyze", response_model=PipelineResponse)
+async def analyze_image(
+    file: UploadFile = File(...),
+    ocr_data: Optional[str] = Form(None)
+):
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File provided is not a valid image."
+        )
+
+    parsed_ocr = None
+    if ocr_data:
+        try:
+            parsed_ocr = json.loads(ocr_data)
+        except Exception:
+            parsed_ocr = None
+
+    # Save uploaded file temporarily for inspection tools (ExifTool, PIL, etc.)
+    try:
+        suffix = os.path.splitext(file.filename)[1] or ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            temp_path = tmp.name
+
+        # Execute orchestrator concurrently across layers
+        result = await run_pipeline_async(temp_path, ocr_data=parsed_ocr)
+        return result
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Forensic pipeline execution failed: {str(exc)}"
+        )
+    finally:
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            os.unlink(temp_path)
