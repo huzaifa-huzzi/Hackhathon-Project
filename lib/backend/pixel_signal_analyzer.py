@@ -5,14 +5,23 @@ import cv2
 import numpy as np
 from PIL import Image, ImageChops
 
-# Import exact schema definitions from your pydantic module
-from .pydantic_model import (
-    Finding,
-    FindingSeverity,
-    LayerResult,
-    LayerStatus,
-    LayerVerdict,
-)
+# Import exact schema definitions from pydantic_model (relative first, absolute fallback)
+try:
+    from .pydantic_model import (
+        Finding,
+        FindingSeverity,
+        LayerResult,
+        LayerStatus,
+        LayerVerdict,
+    )
+except ImportError:
+    from pydantic_model import (  # type: ignore[no-redef]
+        Finding,
+        FindingSeverity,
+        LayerResult,
+        LayerStatus,
+        LayerVerdict,
+    )
 
 
 class _State:

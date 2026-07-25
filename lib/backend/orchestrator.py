@@ -20,10 +20,10 @@ Layer 2 – pixel_signal    : lib/backend/pixel_signal_analyzer.py
                confidence, findings (dataclass list), warnings, evidence
 
 Layer 3 – structural      : lib/backend/structural_analyzer.py
-    Function : inspect_structural(image_path, ocr_data=None) -> dataclass LayerResult
-    Returns  : Dataclass with fields layer_name, verdict (str), risk_score,
-               confidence, findings (dataclass list), warnings, evidence
-               ocr_data is optional; pchatgptass None when not available.
+    Function : inspect_structural(image_path, ocr_data=None) -> pydantic_model LayerResult
+    Returns  : Pydantic model with fields layer (str), verdict (LayerVerdict enum),
+               risk_score, confidence, findings (Pydantic list), warnings, evidence
+               ocr_data is optional; pass None when not available.
 
 Each layer uses its own local Finding / LayerResult types (not the shared
 models). The orchestrator adapts every output into models.LayerResult before

@@ -3,35 +3,22 @@ import os
 import cv2
 import numpy as np
 
-<<<<<<< HEAD
-# Import exact schema definitions from your pydantic module (adjust import name if your file is pydantic_model.py)
-from .pydantic_model import (
-    Finding,
-    FindingSeverity,
-    LayerResult,
-    LayerStatus,
-    LayerVerdict,
-)
-=======
-
-# Standardized schema dataclasses (shared across forensic layers)
-@dataclass
-class Finding:
-    type: str
-    severity: str  # 'low' | 'medium' | 'high' | 'critical'
-    message: str
-
-
-@dataclass
-class LayerResult:
-    layer_name: str
-    verdict: str  # 'likely_real' | 'suspicious' | 'inconclusive'
-    risk_score: float
-    confidence: float
-    findings: List[Finding]
-    warnings: List[str]
-    evidence: Dict[str, Any]
->>>>>>> 2627e77 (Implement core asynchronous pipeline infrastructure and modules)
+try:
+    from .pydantic_model import (
+        Finding,
+        FindingSeverity,
+        LayerResult,
+        LayerStatus,
+        LayerVerdict,
+    )
+except ImportError:
+    from pydantic_model import (  # type: ignore[no-redef]
+        Finding,
+        FindingSeverity,
+        LayerResult,
+        LayerStatus,
+        LayerVerdict,
+    )
 
 
 class _State:
@@ -64,12 +51,8 @@ def _check_aspect_ratio_and_resolution(
             message=f"Image aspect ratio ({aspect_ratio}) deviates significantly from standard device screen bounds.",
         )
         state.risk_delta += 0.20
-<<<<<<< HEAD
-    
-=======
 
     # Ultra-low resolution check
->>>>>>> 2627e77 (Implement core asynchronous pipeline infrastructure and modules)
     if width < 300 or height < 300:
         state.add_finding(
             type_="low_resolution",
@@ -85,11 +68,8 @@ def _audit_bounding_boxes(ocr_boxes: List[Dict[str, Any]], state: _State):
     """
     Evaluates OCR bounding box structures for overlaps, baseline misalignment,
     and anomalous height variances across text lines.
-<<<<<<< HEAD
-=======
 
     Expected box dict format: {"text": str, "bbox": [x, y, w, h], "confidence": float}
->>>>>>> 2627e77 (Implement core asynchronous pipeline infrastructure and modules)
     """
     if not ocr_boxes or len(ocr_boxes) < 2:
         return
