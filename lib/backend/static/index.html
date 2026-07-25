@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SikkaCheck — Payment Screenshot Forensics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0D1117;
+      --surface:  #161B22;
+      --surface2: #21262D;
+      --border:   #30363D;
+      --muted:    #8B949E;
+      --blue:     #2F81F7;
+      --green:    #3FB950;
+      --red:      #F85149;
+      --yellow:   #D29922;
+      --text:     #E6EDF3;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── AppBar ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .logo {
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--blue), var(--green));
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo svg { width: 18px; height: 18px; }
+    .header-titles { flex: 1; }
+    .header-titles h1 { font-size: 17px; font-weight: 700; }
+    .header-titles p  { font-size: 10px; color: var(--muted); margin-top: 1px; }
+    .live-badge {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 12px;
+      border: 1px solid var(--green);
+      border-radius: 20px;
+      background: rgba(63,185,80,.1);
+      font-size: 10px; font-weight: 600; color: var(--green);
+    }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+
+    /* ── Layout ── */
+    main {
+      padding: 20px;
+      max-width: 1300px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 5fr 4fr;
+      gap: 20px;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .card-header {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 15px; font-weight: 700;
+    }
+    .card-header svg { color: var(--blue); flex-shrink: 0; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+    /* ── Drop zone ── */
+    #drop-zone {
+      height: 280px;
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      background: rgba(33,38,45,.5);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--blue);
+      background: rgba(47,129,247,.06);
+    }
+    #drop-zone svg { color: var(--blue); }
+    #drop-zone .dz-title { font-size: 14px; font-weight: 600; }
+    #drop-zone .dz-sub   { font-size: 11px; color: var(--muted); }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+    .tag {
+      padding: 3px 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 11px; color: var(--muted);
+    }
+
+    /* ── Image preview ── */
+    #preview-wrap { display: none; flex-direction: column; gap: 12px; }
+    #img-container {
+      height: 320px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+    }
+    #img-container img {
+      width: 100%; height: 100%;
+      object-fit: contain;
+    }
+    #ela-overlay {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center,
+        rgba(248,81,73,.55) 0%,
+        rgba(63,185,80,.2) 50%,
+        transparent 80%);
+      display: none;
+    }
+    .img-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .img-btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 9px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12px; font-weight: 500; color: var(--text);
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .img-btn.active { background: var(--blue); border-color: var(--blue); }
+    .img-btn:hover:not(.active) { background: #2c3139; }
+    #upload-another {
+      background: none; border: none;
+      color: var(--blue); font-size: 12px;
+      cursor: pointer; text-align: center; padding: 4px;
+      font-family: inherit;
+    }
+    #upload-another:hover { text-decoration: underline; }
+
+    /* ── Processing ── */
+    #processing { display: none; height: 280px; align-items: center; justify-content: center; flex-direction: column; gap: 14px; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #processing p { color: var(--muted); font-size: 13px; }
+    #processing small { color: var(--muted); font-size: 11px; }
+
+    /* ── Banner ── */
+    .banner {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 12px; font-weight: 700;
+      line-height: 1.4;
+    }
+    .banner svg { flex-shrink: 0; margin-top: 1px; }
+    .banner-grey   { background: rgba(139,148,158,.1); color: var(--muted); }
+    .banner-green  { background: rgba(63,185,80,.12);  color: var(--green);  border: 1px solid var(--green); }
+    .banner-red    { background: rgba(248,81,73,.12);  color: var(--red);    border: 1px solid var(--red); }
+    .banner-yellow { background: rgba(210,153,34,.12); color: var(--yellow); border: 1px solid var(--yellow); }
+
+    /* ── Metric tiles ── */
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+    .metric {
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .metric label { font-size: 10px; color: var(--muted); display: block; margin-bottom: 4px; }
+    .metric .val  { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700; }
+
+    /* ── Section header ── */
+    .section-label {
+      font-size: 10px; font-weight: 700; color: var(--muted);
+      letter-spacing: .8px; text-transform: uppercase;
+      margin: 16px 0 8px;
+    }
+
+    /* ── Layer rows ── */
+    .layer-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px;
+      background: var(--surface2);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .layer-name { flex: 1; color: var(--muted); text-transform: capitalize; }
+    .verdict-chip {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px; font-weight: 700;
+    }
+    .layer-risk { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; }
+
+    /* ── Finding rows ── */
+    .finding-row {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .finding-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+
+    /* hidden file input */
+    #file-input { display: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  </div>
+  <div class="header-titles">
+    <h1>SikkaCheck</h1>
+    <p>Payment Screenshot Forensics Engine</p>
+  </div>
+  <div class="live-badge"><span class="live-dot"></span> Live API</div>
+</header>
+
+<main>
+  <!-- ── Upload card ── -->
+  <div class="card">
+    <div class="card-header">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+      Receipt Screenshot Input
+    </div>
+    <hr />
+    <input type="file" id="file-input" accept="image/*" />
+
+    <div id="drop-zone">
+      <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <p class="dz-title">Click or drag a screenshot here</p>
+      <p class="dz-sub">Supports PNG, JPG, WEBP</p>
+      <div class="tags">
+        <span class="tag">JazzCash</span>
+        <span class="tag">EasyPaisa</span>
+        <span class="tag">Raast</span>
+      </div>
+    </div>
+
+    <div id="processing">
+      <div class="spinner"></div>
+      <p>Running forensic pipeline…</p>
+      <small>Metadata · Pixel · Structural layers running in parallel</small>
+    </div>
+
+    <div id="preview-wrap">
+      <div id="img-container">
+        <img id="preview-img" src="" alt="Preview" />
+        <div id="ela-overlay"></div>
+      </div>
+      <div class="img-btns">
+        <button class="img-btn active" id="btn-original" onclick="setMode(false)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          Original
+        </button>
+        <button class="img-btn" id="btn-ela" onclick="setMode(true)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          ELA Mode
+        </button>
+      </div>
+      <button id="upload-another" onclick="resetUI()">↺ Upload Another Image</button>
+    </div>
+  </div>
+
+  <!-- ── Report card ── -->
+  <div class="card">
+    <div class="card-header">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      Forensic Analysis Output
+    </div>
+    <hr />
+    <div id="report-content">
+      <div class="banner banner-grey">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Upload a screenshot to run the forensic pipeline.
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const dropZone    = document.getElementById('drop-zone');
+const fileInput   = document.getElementById('file-input');
+const processing  = document.getElementById('processing');
+const previewWrap = document.getElementById('preview-wrap');
+const previewImg  = document.getElementById('preview-img');
+const elaOverlay  = document.getElementById('ela-overlay');
+const reportContent = document.getElementById('report-content');
+const btnOriginal = document.getElementById('btn-original');
+const btnEla      = document.getElementById('btn-ela');
+
+let currentFile = null;
+let lastResult  = null;
+
+// ── Drag & drop ──────────────────────────────────────────────────────────────
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) handleFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  fileInput.value = '';
+});
+
+// ── Handle file ──────────────────────────────────────────────────────────────
+function handleFile(file) {
+  currentFile = file;
+  const reader = new FileReader();
+  reader.onload = e => { previewImg.src = e.target.result; };
+  reader.readAsDataURL(file);
+
+  dropZone.style.display = 'none';
+  previewWrap.style.display = 'none';
+  processing.style.display = 'flex';
+  reportContent.innerHTML = '';
+
+  analyze(file);
+}
+
+async function analyze(file) {
+  const fd = new FormData();
+  fd.append('file', file, file.name);
+
+  try {
+    const res = await fetch('/api/v1/analyze', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Server error');
+    lastResult = data;
+    showResult(data);
+  } catch (err) {
+    showError(err.message);
+  }
+
+  processing.style.display = 'none';
+  previewWrap.style.display = 'flex';
+}
+
+// ── Reset ────────────────────────────────────────────────────────────────────
+function resetUI() {
+  currentFile = null; lastResult = null;
+  previewWrap.style.display = 'none';
+  processing.style.display = 'none';
+  dropZone.style.display = 'flex';
+  previewImg.src = '';
+  setMode(false);
+  reportContent.innerHTML = `
+    <div class="banner banner-grey">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Upload a screenshot to run the forensic pipeline.
+    </div>`;
+}
+
+// ── ELA mode ─────────────────────────────────────────────────────────────────
+function setMode(ela) {
+  elaOverlay.style.display = ela ? 'block' : 'none';
+  btnOriginal.classList.toggle('active', !ela);
+  btnEla.classList.toggle('active',  ela);
+}
+
+// ── Verdict helpers ───────────────────────────────────────────────────────────
+function verdictClass(v) {
+  if (v === 'authentic')  return 'banner-green';
+  if (v === 'suspicious' || v === 'rejected') return 'banner-red';
+  return 'banner-yellow';
+}
+function verdictIcon(v) {
+  if (v === 'authentic')
+    return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+  if (v === 'suspicious' || v === 'rejected')
+    return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+}
+function verdictText(v, cb) {
+  if (v === 'authentic')  return 'AUTHENTIC — Screenshot integrity verified.';
+  if (v === 'rejected')   return 'REJECTED — Circuit breaker triggered. High-confidence forgery.';
+  if (v === 'suspicious') return 'SUSPICIOUS — Forensic anomalies detected.';
+  return 'INCONCLUSIVE — Insufficient evidence to determine authenticity.';
+}
+
+function riskColor(score) {
+  if (score >= 0.65) return 'var(--red)';
+  if (score >= 0.35) return 'var(--yellow)';
+  return 'var(--green)';
+}
+function chipStyle(v) {
+  const c = v === 'authentic' ? 'var(--green)'
+          : (v === 'suspicious' || v === 'rejected') ? 'var(--red)'
+          : 'var(--yellow)';
+  return `background:${c}22;border:1px solid ${c}66;color:${c}`;
+}
+function severityColor(s) {
+  if (s === 'critical') return 'var(--red)';
+  if (s === 'high')     return 'var(--yellow)';
+  return 'var(--muted)';
+}
+
+// ── Render result ─────────────────────────────────────────────────────────────
+function showResult(data) {
+  const v = data.overall_verdict;
+  if (v === 'suspicious' || v === 'rejected') setMode(true);
+
+  const risk = data.overall_risk_score;
+  const conf = data.overall_confidence;
+
+  // Layer rows
+  let layersHtml = '';
+  for (const [name, lr] of Object.entries(data.layer_results || {})) {
+    const lv = lr.verdict;
+    layersHtml += `
+      <div class="layer-row">
+        <span class="layer-name">${name.replaceAll('_',' ')}</span>
+        <span class="verdict-chip" style="${chipStyle(lv)}">${lv.toUpperCase()}</span>
+        <span class="layer-risk" style="color:${riskColor(lr.risk_score)}">${Math.round(lr.risk_score*100)}%</span>
+      </div>`;
+  }
+
+  // Findings
+  const allFindings = Object.values(data.layer_results || {})
+    .flatMap(lr => lr.findings || [])
+    .filter(f => ['high','critical','medium'].includes(f.severity))
+    .slice(0, 6);
+
+  let findingsHtml = '';
+  if (allFindings.length) {
+    findingsHtml = `<p class="section-label">Key Findings</p>`;
+    for (const f of allFindings) {
+      const c = severityColor(f.severity);
+      findingsHtml += `
+        <div class="finding-row" style="background:${c}14;border:1px solid ${c}4d">
+          <span class="finding-dot" style="background:${c}"></span>
+          <span style="color:${c}">${f.message}</span>
+        </div>`;
+    }
+  }
+
+  reportContent.innerHTML = `
+    <div class="banner ${verdictClass(v)}">
+      ${verdictIcon(v)}
+      <span>${verdictText(v)}</span>
+    </div>
+    <div class="metrics">
+      <div class="metric">
+        <label>Risk Score</label>
+        <span class="val" style="color:${riskColor(risk)}">${Math.round(risk*100)}%</span>
+      </div>
+      <div class="metric">
+        <label>Confidence</label>
+        <span class="val" style="color:var(--blue)">${Math.round(conf*100)}%</span>
+      </div>
+    </div>
+    <p class="section-label">Layer Results</p>
+    ${layersHtml}
+    ${findingsHtml}
+  `;
+}
+
+function showError(msg) {
+  reportContent.innerHTML = `
+    <div class="banner banner-red">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      Error: ${msg}
+    </div>`;
+}
+</script>
+</body>
+</html>

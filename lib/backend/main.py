@@ -14,6 +14,8 @@ from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 try:
     from .orchestrator import run_pipeline_async
@@ -40,6 +42,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve the web UI
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
 # ---------------------------------------------------------------------------
 # Allowed image MIME types
 # ---------------------------------------------------------------------------
@@ -58,6 +64,16 @@ ALLOWED_CONTENT_TYPES = {
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+
+@app.get("/", include_in_schema=False)
+async def serve_ui():
+    return FileResponse(os.path.join(_static_dir, "index.html"))
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    raise HTTPException(status_code=204)
 
 
 @app.get("/health", tags=["Health"])
