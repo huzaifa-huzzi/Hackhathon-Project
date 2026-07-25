@@ -1,0 +1,460 @@
+# Build the Metadata Inspection Layer
+
+Build a single Python module located at:
+
+```text
+lib/backend/metadata.py
+```
+
+This module is part of the **SikkaCheck** forensic pipeline.
+
+Its responsibility is to perform **metadata-based forensic analysis** on an uploaded image and produce a standardized `LayerResult`.
+
+Do **not** implement any API, FastAPI routes, frontend, CLI, orchestrator, or other layers.
+
+---
+
+# Objective
+
+The Metadata Inspection Layer receives the **original uploaded image** and performs a complete metadata forensic analysis.
+
+Its purpose is to determine whether the metadata provides evidence that the image is:
+
+* Likely Real
+* Suspicious
+* Possibly AI Generated
+* Inconclusive
+
+This layer **must only use metadata**.
+
+It must **never** analyze pixels.
+
+It must **never** perform OCR.
+
+It must **never** inspect image structure.
+
+It must **never** use any machine learning model.
+
+The assessment must be derived **only from metadata**.
+
+---
+
+# Function Signature
+
+Implement:
+
+```python
+def inspect_metadata(image_path: str) -> LayerResult:
+```
+
+Example:
+
+```python
+result = inspect_metadata("uploads/image.png")
+```
+
+The function returns a fully populated `LayerResult`.
+
+---
+
+# Metadata Extraction
+
+Extract every metadata field that is available.
+
+Use **ExifTool** as the primary metadata extractor.
+
+If ExifTool is unavailable, gracefully fall back to Pillow and exifread.
+
+Extract as much metadata as possible, including:
+
+## File Information
+
+* File Name
+* File Size
+* MIME Type
+* Extension
+* Width
+* Height
+* DPI
+* Color Mode
+* Bit Depth
+
+---
+
+## EXIF
+
+Extract every available EXIF tag.
+
+Important examples include:
+
+* Make
+* Model
+* Software
+* Orientation
+* DateTime
+* DateTimeOriginal
+* ModifyDate
+* XResolution
+* YResolution
+
+---
+
+## XMP
+
+Extract all XMP metadata.
+
+---
+
+## IPTC
+
+Extract all IPTC metadata.
+
+---
+
+## ICC Profile
+
+Extract ICC profile information if available.
+
+---
+
+## Additional Metadata
+
+Extract any remaining metadata fields exposed by ExifTool.
+
+Store the complete metadata inside:
+
+```python
+evidence["raw_metadata"]
+```
+
+---
+
+# Metadata Analysis
+
+After extraction, perform forensic analysis.
+
+Evaluate the metadata using the following forensic factors.
+
+---
+
+## 1. Device Metadata Detection
+
+Determine whether metadata suggests the image originated from a legitimate consumer device or operating system.
+
+Examples include:
+
+* Android
+* Samsung
+* Xiaomi
+* Google Pixel
+* One UI
+* HyperOS
+* MIUI
+* Oppo
+* Vivo
+* iPhone
+* iOS
+* Apple
+
+Produce findings indicating whether genuine device metadata is present.
+
+---
+
+## 2. AI Metadata Detection
+
+Search metadata for signatures of AI-generated images.
+
+Examples include:
+
+* Stable Diffusion
+* FLUX
+* ComfyUI
+* Automatic1111
+* Fooocus
+* InvokeAI
+* Midjourney
+* DALL·E
+* Leonardo AI
+* Ideogram
+
+The list should be implemented in an easily extendable configuration.
+
+---
+
+## 3. Editing Software Detection
+
+Detect evidence that the image has been edited.
+
+Recognize common software such as:
+
+* Adobe Photoshop
+* Adobe Lightroom
+* GIMP
+* Canva
+* Snapseed
+* Affinity Photo
+* Paint.NET
+* Figma
+* Pixlr
+
+---
+
+## 4. Metadata Integrity Checks
+
+Perform consistency analysis.
+
+Check for:
+
+* Missing metadata
+* Corrupted metadata
+* Broken EXIF
+* Invalid timestamps
+* Conflicting timestamps
+* Impossible metadata combinations
+* Missing software information
+* Missing ICC profile
+* Duplicate metadata fields
+* Unexpected metadata anomalies
+
+---
+
+# Risk Assessment
+
+After metadata analysis, compute a forensic assessment.
+
+The assessment must combine **all available evidence**, not rely on any single field.
+
+Evaluate the following categories.
+
+---
+
+## Positive Indicators
+
+These reduce suspicion.
+
+Examples:
+
+* Valid Android metadata
+* Valid iOS metadata
+* Expected screenshot metadata
+* Consistent timestamps
+* Consistent software information
+* Device metadata matches file characteristics
+* No editing software detected
+* No AI metadata detected
+
+---
+
+## Negative Indicators
+
+These increase suspicion.
+
+Examples:
+
+* AI metadata detected
+* Editing software detected
+* Corrupted metadata
+* Broken EXIF
+* Conflicting timestamps
+* Impossible metadata combinations
+* Suspicious software
+* Unknown generator
+* Metadata anomalies
+* Metadata stripped when metadata would normally be expected
+
+---
+
+# Risk Score
+
+Produce
+
+```python
+risk_score
+```
+
+between
+
+```text
+0.0
+```
+
+and
+
+```text
+1.0
+```
+
+Interpretation:
+
+| Score     | Meaning             |
+| --------- | ------------------- |
+| 0.00–0.20 | Very Low Suspicion  |
+| 0.21–0.40 | Low Suspicion       |
+| 0.41–0.60 | Moderate Suspicion  |
+| 0.61–0.80 | High Suspicion      |
+| 0.81–1.00 | Very High Suspicion |
+
+The score should represent:
+
+> **How suspicious the metadata appears.**
+
+It is **NOT** the probability that the image is AI-generated.
+
+---
+
+# Confidence Score
+
+Compute
+
+```python
+confidence
+```
+
+between
+
+```text
+0.0
+```
+
+and
+
+```text
+1.0
+```
+
+Confidence should increase when:
+
+* Rich metadata exists
+* Metadata is internally consistent
+* Multiple metadata fields support the same conclusion
+
+Confidence should decrease when:
+
+* Metadata is missing
+* Metadata is incomplete
+* Metadata is corrupted
+* Metadata provides insufficient evidence
+
+---
+
+# Verdict
+
+Determine the verdict from the final risk score.
+
+```
+risk_score < 0.35
+→ likely_real
+
+0.35 <= risk_score < 0.65
+→ inconclusive
+
+risk_score >= 0.65
+→ suspicious
+```
+
+The verdict must always be based on the **combined metadata assessment**, not on a single metadata field.
+
+---
+
+# Findings
+
+Populate the findings list with structured forensic observations.
+
+Examples:
+
+* Android screenshot metadata detected.
+* Stable Diffusion metadata detected.
+* Photoshop software detected.
+* Metadata internally consistent.
+* Invalid timestamp ordering detected.
+* Metadata stripped.
+* EXIF is corrupted.
+* ICC profile missing.
+
+Each finding should include:
+
+* type
+* severity
+* message
+
+---
+
+# Warnings
+
+Populate warnings with:
+
+* Metadata parsing failures
+* Unsupported metadata formats
+* Extraction errors
+* Missing metadata sections
+* Unexpected exceptions that do not prevent analysis
+
+The module should never crash because of malformed metadata.
+
+---
+
+# Evidence
+
+Populate the evidence dictionary with structured results.
+
+Example:
+
+```python
+{
+    "metadata_present": True,
+    "real_device_metadata_detected": True,
+    "ai_metadata_detected": False,
+    "editing_software_detected": False,
+    "software": "Android 15",
+    "device": "Samsung Galaxy S24",
+    "camera_make": None,
+    "camera_model": None,
+    "raw_metadata": {...}
+}
+```
+
+---
+
+# Output
+
+Return the provided `LayerResult` Pydantic model.
+
+Do not create a new output schema.
+
+Populate every field.
+
+---
+
+# Code Quality Requirements
+
+The implementation must be:
+
+* Modular
+* Type hinted
+* Production ready
+* Well documented
+* Extensible
+* Cleanly organized
+* Easy to maintain
+
+Use helper functions where appropriate.
+
+Avoid duplicated logic.
+
+Use robust exception handling.
+
+---
+
+# Constraints
+
+* Do not use OCR.
+* Do not inspect image pixels.
+* Do not use OpenCV.
+* Do not use AI models.
+* Do not perform structural analysis.
+* Do not perform ELA.
+* Do not build an API.
+* Do not build a frontend.
+* Do not implement other forensic layers.
+
+Implement **only** the Metadata Inspection Layer.
