@@ -12,7 +12,10 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from .models import LayerResult, LayerStatus, LayerVerdict, PipelineResponse
+try:
+    from .models import LayerResult, LayerStatus, LayerVerdict, PipelineResponse
+except ImportError:
+    from models import LayerResult, LayerStatus, LayerVerdict, PipelineResponse  # type: ignore[no-redef]
 
 # ---------------------------------------------------------------------------
 # Layer weights — must sum to 1.0.
