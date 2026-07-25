@@ -441,10 +441,10 @@ def _analyse_device_metadata(
     else:
         state.add_finding(
             type_="device_metadata_absent",
-            severity="low",
+            severity="medium",
             message="No recognisable device metadata found.",
         )
-        state.risk_delta += 0.05
+        state.risk_delta += 0.10
 
 
 def _analyse_ai_metadata(text: str, state: _State) -> None:
@@ -510,10 +510,10 @@ def _analyse_metadata_integrity(
     else:
         state.add_finding(
             type_="icc_profile_missing",
-            severity="low",
-            message="ICC colour profile is missing.",
+            severity="medium",
+            message="ICC colour profile is missing. Genuine device screenshots include an ICC profile.",
         )
-        state.risk_delta += 0.05
+        state.risk_delta += 0.10
 
     # ── Timestamp analysis ─────────────────────────────────────────────────
     ts_map = {
@@ -589,7 +589,7 @@ def _analyse_metadata_integrity(
             severity="medium",
             message="No EXIF data found in image.",
         )
-        state.risk_delta += 0.10
+        state.risk_delta += 0.15
 
     if not has_xmp and not has_iptc:
         state.add_finding(

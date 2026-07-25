@@ -36,8 +36,8 @@ _DEFAULT_WEIGHT: float = 0.20
 # Verdict thresholds (applied to weighted risk score)
 # ---------------------------------------------------------------------------
 
-_AUTHENTIC_CEILING: float = 0.35
-_SUSPICIOUS_FLOOR: float = 0.65
+_AUTHENTIC_CEILING: float = 0.30
+_SUSPICIOUS_FLOOR: float = 0.55
 
 # ---------------------------------------------------------------------------
 # Circuit-breaker threshold

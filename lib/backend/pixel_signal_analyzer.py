@@ -62,14 +62,25 @@ def _perform_ela(image_path: str, state: _State, quality: int = 90) -> float:
         state.ela_max_diff = float(max_diff)
         state.ela_mean_diff = float(mean_diff)
 
-        if max_diff > 60 and (max_diff / (mean_diff + 1e-5)) > 8.0:
+        # Very flat image — real phone screenshots always have compression noise.
+        # A near-zero mean_diff means the image was synthesised or is a clean
+        # digital export (e.g. Canva, Photoshop, screenshot editor).
+        if mean_diff < 3.0:
+            state.add_finding(
+                type_="ela_synthetic_flatness",
+                severity=FindingSeverity.CRITICAL,
+                message=f"ELA mean difference is near-zero ({mean_diff:.2f}), indicating a digitally synthesised image with no real-camera compression history.",
+            )
+            state.risk_delta += 0.50
+
+        elif max_diff > 30 and (max_diff / (mean_diff + 1e-5)) > 3.0:
             state.add_finding(
                 type_="ela_compression_anomaly",
                 severity=FindingSeverity.CRITICAL,
-                message=f"Error Level Analysis detected localized compression discrepancies (max diff: {max_diff:.1f}, mean: {mean_diff:.1f}).",
+                message=f"Error Level Analysis detected localised compression discrepancies (max diff: {max_diff:.1f}, mean: {mean_diff:.2f}), suggesting pasted or spliced regions.",
             )
             state.risk_delta += 0.30
-        
+
         return mean_diff
     except Exception as e:
         state.warn(f"ELA computation failed: {str(e)}")
@@ -129,6 +140,16 @@ def _perform_noise_grid_analysis(img_gray: np.ndarray, state: _State):
         coeff_of_variation = std_var / (mean_var + 1e-5)
 
         state.noise_grid_variance = round(coeff_of_variation, 4)
+
+        # Near-zero mean Laplacian variance means the image is artificially smooth —
+        # real device captures always carry rendering noise and subpixel artifacts.
+        if mean_var < 15.0:
+            state.add_finding(
+                type_="synthetic_low_noise_floor",
+                severity=FindingSeverity.CRITICAL,
+                message=f"Image noise floor is near-zero (mean Laplacian variance: {mean_var:.2f}). Real device screenshots always contain rendering noise; this indicates a digitally synthesised image.",
+            )
+            state.risk_delta += 0.25
 
         if coeff_of_variation > 1.8:
             state.add_finding(
