@@ -155,7 +155,10 @@ def _run_metadata_layer(image_path: str) -> LayerResult:
     Function: inspect_metadata(image_path: str)
     """
     try:
-        from .metadata import inspect_metadata  # type: ignore[import]
+        try:
+            from .metadata import inspect_metadata  # type: ignore[import]
+        except ImportError:
+            from metadata import inspect_metadata  # type: ignore[no-redef]
 
         raw = inspect_metadata(image_path)
         return _adapt_layer_result(raw, "metadata")
@@ -172,7 +175,10 @@ def _run_pixel_signal_layer(image_path: str) -> LayerResult:
     Function: inspect_pixel_signals(image_path: str)   ← note the plural 's'
     """
     try:
-        from .pixel_signal_analyzer import inspect_pixel_signals  # type: ignore[import]
+        try:
+            from .pixel_signal_analyzer import inspect_pixel_signals  # type: ignore[import]
+        except ImportError:
+            from pixel_signal_analyzer import inspect_pixel_signals  # type: ignore[no-redef]
 
         raw = inspect_pixel_signals(image_path)
         return _adapt_layer_result(raw, "pixel_signal")
@@ -194,7 +200,10 @@ def _run_structural_layer(
               OCR results are not available — the layer degrades gracefully.
     """
     try:
-        from .structural_analyzer import inspect_structural  # type: ignore[import]
+        try:
+            from .structural_analyzer import inspect_structural  # type: ignore[import]
+        except ImportError:
+            from structural_analyzer import inspect_structural  # type: ignore[no-redef]
 
         raw = inspect_structural(image_path, ocr_data=ocr_data)
         return _adapt_layer_result(raw, "structural")
