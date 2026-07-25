@@ -3,6 +3,7 @@ import os
 import cv2
 import numpy as np
 
+<<<<<<< HEAD
 # Import exact schema definitions from your pydantic module (adjust import name if your file is pydantic_model.py)
 from .pydantic_model import (
     Finding,
@@ -11,6 +12,26 @@ from .pydantic_model import (
     LayerStatus,
     LayerVerdict,
 )
+=======
+
+# Standardized schema dataclasses (shared across forensic layers)
+@dataclass
+class Finding:
+    type: str
+    severity: str  # 'low' | 'medium' | 'high' | 'critical'
+    message: str
+
+
+@dataclass
+class LayerResult:
+    layer_name: str
+    verdict: str  # 'likely_real' | 'suspicious' | 'inconclusive'
+    risk_score: float
+    confidence: float
+    findings: List[Finding]
+    warnings: List[str]
+    evidence: Dict[str, Any]
+>>>>>>> 2627e77 (Implement core asynchronous pipeline infrastructure and modules)
 
 
 class _State:
@@ -30,7 +51,9 @@ class _State:
         self.warnings.append(message)
 
 
-def _check_aspect_ratio_and_resolution(img: np.ndarray, state: _State) -> Dict[str, Any]:
+def _check_aspect_ratio_and_resolution(
+    img: np.ndarray, state: _State
+) -> Dict[str, Any]:
     height, width = img.shape[:2]
     aspect_ratio = round(width / height, 3) if height > 0 else 0.0
 
@@ -41,7 +64,12 @@ def _check_aspect_ratio_and_resolution(img: np.ndarray, state: _State) -> Dict[s
             message=f"Image aspect ratio ({aspect_ratio}) deviates significantly from standard device screen bounds.",
         )
         state.risk_delta += 0.20
+<<<<<<< HEAD
     
+=======
+
+    # Ultra-low resolution check
+>>>>>>> 2627e77 (Implement core asynchronous pipeline infrastructure and modules)
     if width < 300 or height < 300:
         state.add_finding(
             type_="low_resolution",
@@ -57,12 +85,17 @@ def _audit_bounding_boxes(ocr_boxes: List[Dict[str, Any]], state: _State):
     """
     Evaluates OCR bounding box structures for overlaps, baseline misalignment,
     and anomalous height variances across text lines.
+<<<<<<< HEAD
+=======
+
+    Expected box dict format: {"text": str, "bbox": [x, y, w, h], "confidence": float}
+>>>>>>> 2627e77 (Implement core asynchronous pipeline infrastructure and modules)
     """
     if not ocr_boxes or len(ocr_boxes) < 2:
         return
 
     sorted_boxes = sorted(ocr_boxes, key=lambda b: b["bbox"][1])
-    
+
     lines: List[List[Dict[str, Any]]] = []
     current_line: List[Dict[str, Any]] = []
 
@@ -126,6 +159,7 @@ def _audit_bounding_boxes(ocr_boxes: List[Dict[str, Any]], state: _State):
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def inspect_structural(
     image_path: str, ocr_data: Optional[List[Dict[str, Any]]] = None
 ) -> LayerResult:
@@ -179,7 +213,9 @@ def inspect_structural(
         _audit_bounding_boxes(ocr_data, state)
         state.confidence_delta += 0.20
     else:
-        state.warn("No OCR bounding box data provided. Structural audit limited to global geometry.")
+        state.warn(
+            "No OCR bounding box data provided. Structural audit limited to global geometry."
+        )
 
     base_risk = 0.10
     base_confidence = 0.60
